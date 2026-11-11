@@ -23,7 +23,9 @@ Power Monitor: перевіряє наявність мережі (grid) чер�
 import json
 import os
 import sys
+import time
 import hashlib
+import datetime
 import urllib.request
 import urllib.error
 
@@ -98,7 +100,7 @@ def get_deye_token():
 
 
 def try_deye_endpoints(token):
-    """Пробує різні варіанти ендпоінту Deye, повертає (endpoint_name, data_list)."""
+    """Пробує різні варіанти ендпоінту Deye, повертає (endpoint_name, data_list, meta)."""
     variants = [
         (
             "POST /device/latest",
@@ -141,8 +143,22 @@ def try_deye_endpoints(token):
             continue
         dl = extract_data_list(j)
         if dl:
-            return name, dl
-    return None, None
+            return name, dl, extract_device_meta(j)
+    return None, None, {}
+
+
+def extract_device_meta(j):
+    """Метадані пристрою: collectionTime (коли знято дані), deviceState (1 online, 2 alert, 3 offline)."""
+    if isinstance(j, dict):
+        dl = j.get("deviceDataList")
+        if isinstance(dl, list) and dl and isinstance(dl[0], dict):
+            d = dl[0]
+            return {
+                "deviceSn": d.get("deviceSn"),
+                "deviceState": d.get("deviceState"),
+                "collectionTime": d.get("collectionTime"),
+            }
+    return {}
 
 
 def extract_data_list(j):
@@ -242,6 +258,30 @@ def tuya_command(device_id, turn_on):
     return bool(isinstance(res, dict) and res.get("success"))
 
 
+def report_freshness(meta):
+    """Друкує, коли знято дані і чи пристрій онлайн — щоб відрізняти
+    застарілий знімок хмари від реальної зміни стану мережі."""
+    state = meta.get("deviceState")
+    if state is not None:
+        names = {1: "online", 2: "alert", 3: "offline"}
+        print(f"Стан пристрою: {state} ({names.get(state, '?')})")
+        if state != 1:
+            print("⚠️ Інвертор/логер не онлайн — дані можуть бути застарілі.")
+
+    ct = meta.get("collectionTime")
+    if ct is None:
+        return
+    try:
+        ct = int(ct)
+        age = int(time.time()) - ct
+        ts = datetime.datetime.fromtimestamp(ct, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        print(f"Дані зібрані: {ts} ({age} с тому)")
+        if age > 600:
+            print("⚠️ Дані старші за 10 хвилин — хмара могла ще не оновитись.")
+    except Exception:
+        print(f"collectionTime: {ct}")
+
+
 def main():
     missing = [n for n, v in [
         ("DEYE_SN", DEYE_SN),
@@ -264,12 +304,13 @@ def main():
     print(f"Deye: base={DEYE_BASE} sn={DEYE_SN} token_len={len(token)}")
     print(f"Tuya: region={TUYA_REGION} device={TUYA_DEVICE_ID}")
 
-    name, items = try_deye_endpoints(token)
+    name, items, meta = try_deye_endpoints(token)
     if not items:
         print("\n❌ Не вдалося отримати дані з жодного ендпоінту Deye.")
         sys.exit(1)
 
     print(f"\n✅ Робочий ендпоінт: {name}")
+    report_freshness(meta)
     grid_ok = analyze_grid(items)
 
     print(f"\nМережа: {'Є' if grid_ok else 'ВІДСУТНЯ'}")

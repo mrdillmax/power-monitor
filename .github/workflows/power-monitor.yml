@@ -56,3 +56,13 @@ jobs:
           name: power-monitor-log
           path: power_monitor.log
           if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Power Monitor"
+            echo '```'
+            grep -E "Стан пристрою|Дані зібрані|Grid voltage|Мережа|Поточний стан|Tuya |FORCE_ACTION|⚠️|❌|Готово" power_monitor.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
