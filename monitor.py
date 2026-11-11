@@ -252,7 +252,8 @@ def tuya_command(device_id, turn_on):
         print(f"Розетка вже {'ON' if turn_on else 'OFF'} — змін не потрібно.")
         return True
 
-    payload = [{"code": code, "value": bool(turn_on)}]
+    # Tuya Cloud очікує об'єкт {"commands": [...]}, а не голий список
+    payload = {"commands": [{"code": code, "value": bool(turn_on)}]}
     res = c.sendcommand(device_id, payload)
     print(f"Tuya {'ON' if turn_on else 'OFF'} -> {json.dumps(res, ensure_ascii=False)[:300]}")
     return bool(isinstance(res, dict) and res.get("success"))
