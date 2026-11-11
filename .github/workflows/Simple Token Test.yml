@@ -1,0 +1,24 @@
+name: Simple Token Test
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Test Token
+        run: |
+          TOKEN="${{ secrets.DEYE_TOKEN }}"
+          if [[ -z "$TOKEN" ]]; then
+            echo "❌ DEYE_TOKEN is empty"
+            exit 1
+          fi
+          echo "✅ Token length: ${#TOKEN}"
+          echo "First 20 chars: ${TOKEN:0:20}"
+          echo "Testing Deye API..."
+          curl -s -H "Authorization: Bearer $TOKEN" \
+               -H "User-Agent: GitHubActions/1.0" \
+               -H "Accept: application/json" \
+               "https://eu1-developer.deyecloud.com/v1.0/account/token" \
+               | jq -r '.accessToken' | head -c 10
